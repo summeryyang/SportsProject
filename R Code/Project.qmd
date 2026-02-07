@@ -1053,7 +1053,7 @@ library(reactable)
 library(readxl)
 library(tidyverse)
 
-nba.salary <- read_csv("https://raw.githubusercontent.com/summeryyang/visualizations/main/nbasalary.csv")
+nba.salary <- read_csv("https://raw.githubusercontent.com/summeryyang/NBA-Salary-Analysis/main/nbasalary.csv")
 
 # UI
 ui <- fluidPage(
