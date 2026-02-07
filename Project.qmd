@@ -1,0 +1,1908 @@
+---
+title: "Sports Analytics Project"
+author: "Summer Yang"
+format: 
+  html:
+    toc: true
+    embed-resources: true
+editor: source
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+library(robotstxt)
+library(rvest)
+library(tidyverse)
+library(janitor)
+library(polite)
+library(dplyr)
+library(stringr)
+library(stringi)
+```
+
+# Data Sourcing
+```{r}
+paths_allowed("https://hoopshype.com/salaries/players/")
+paths_allowed("https://www.basketball-reference.com/")
+```
+
+### 2023-2024 season
+```{r}
+pergame23_24 <- read_html("https://www.basketball-reference.com/leagues/NBA_2024_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header=T) %>%
+  .[[1]]
+pergame23_24 <- pergame23_24 %>% 
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2023-2024")
+
+# Clean Player names
+pergame23_24$Player <- stri_trans_general(pergame23_24$Player, "Latin-ASCII")
+pergame23_24$Player <- str_replace_all(pergame23_24$Player, "Jr\\.", "")
+pergame23_24$Player <- str_replace_all(pergame23_24$Player, "[[:punct:]]", "")
+pergame23_24$Player <- str_replace_all(pergame23_24$Player, "III", "")
+pergame23_24$Player <- str_replace_all(pergame23_24$Player, "II", "")
+pergame23_24$Player <- str_replace_all(pergame23_24$Player, "IV", "")
+pergame23_24$Player <- trimws(pergame23_24$Player)
+head(pergame23_24)
+
+salary23_24 <- read_html("https://hoopshype.com/salaries/players/2023-2024/") %>%
+  html_nodes("#main") %>%
+  html_table(header=T) %>%
+  .[[1]]
+salary23_24 <- salary23_24 %>%
+  select(Player, "2023/24") %>%
+  rename(Salary = `2023/24`) %>%
+  mutate(Season = "2023-2024")
+
+# Clean Player names
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Jr$", "")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "[[:punct:]]", "")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "III", "")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "II", "")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "IV", "")
+
+# Fix Nicknames
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Dennis Schroeder", "Dennis Schroder")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Scottie Pippen", "Scotty Pippen")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Cameron Whitmore", "Cam Whitmore")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Nicolas Claxton", "Nic Claxton")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Herb Jones", "Herbert Jones")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Santiago Aldama", "Santi Aldama")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Ishmael Smith", "Ish Smith")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Ishmail Wainright", "Ish Wainright")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Nate Williams", "Jeenathan Williams")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Patrick Mills", "Patty Mills")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "Josh Primo", "Joshua Primo")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "JaVonte Smart", "Javonte Smart")
+salary23_24$Player <- str_replace_all(salary23_24$Player, "BJ Boston", "Brandon Boston")
+
+salary23_24$Player <- trimws(salary23_24$Player)
+head(salary23_24)
+
+# Join per game data and salary data
+nba23_24 <- full_join(pergame23_24, salary23_24)
+
+# Clean Player Salary by Google Search
+nba23_24 <- nba23_24 %>% mutate(Salary = ifelse(Player == "Nick Richards", "$5,000,000", Salary))
+nba23_24 <- nba23_24 %>% mutate(Salary = ifelse(Player == "Dmytro Skapintsev", "$26,322", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba23_24 <- nba23_24 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba23_24)
+dim(pergame23_24)
+dim(salary23_24)
+dim(nba23_24)
+```
+
+### 2022-2023 season
+```{r}
+pergame22_23 <- read_html("https://www.basketball-reference.com/leagues/NBA_2023_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header=T) %>%
+  .[[1]]
+pergame22_23 <- pergame22_23 %>% 
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2022-2023")
+
+# Clean Player names
+pergame22_23$Player <- stri_trans_general(pergame22_23$Player, "Latin-ASCII")
+pergame22_23$Player <- str_replace_all(pergame22_23$Player, "Jr\\.", "")
+pergame22_23$Player <- str_replace_all(pergame22_23$Player, "[[:punct:]]", "")
+pergame22_23$Player <- str_replace_all(pergame22_23$Player, "III", "")
+pergame22_23$Player <- str_replace_all(pergame22_23$Player, "II", "")
+pergame22_23$Player <- str_replace_all(pergame22_23$Player, "IV", "")
+
+pergame22_23$Player <- trimws(pergame22_23$Player)
+head(pergame22_23)
+
+salary22_23 <- read_html("https://hoopshype.com/salaries/players/2022-2023/") %>%
+  html_nodes("#main") %>%
+  html_table(header=T) %>%
+  .[[1]]
+salary22_23 <- salary22_23 %>%
+  select(Player, "2022/23") %>%
+  rename(Salary = `2022/23`) %>%
+  mutate(Season = "2022-2023")
+
+# Clean Player names
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Jr$", "")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "[[:punct:]]", "")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "III", "")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "II", "")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "IV", "")
+
+# Fix Nicknames
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Dennis Schroeder", "Dennis Schroder")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Scottie Pippen", "Scotty Pippen")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Cameron Whitmore", "Cam Whitmore")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Nicolas Claxton", "Nic Claxton")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Herb Jones", "Herbert Jones")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Santiago Aldama", "Santi Aldama")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Ishmael Smith", "Ish Smith")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Ishmail Wainright", "Ish Wainright")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Nate Williams", "Jeenathan Williams")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Patrick Mills", "Patty Mills")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Josh Primo", "Joshua Primo")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "JaVonte Smart", "Javonte Smart")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "BJ Boston", "Brandon Boston")
+salary22_23$Player <- str_replace_all(salary22_23$Player, "Juan Hernangomez", "Juancho Hernangomez")
+
+salary22_23$Player <- trimws(salary22_23$Player)
+head(salary22_23)
+
+# Join per game data and salary data
+nba22_23 <- full_join(pergame22_23, salary22_23)
+
+# Clean Player Salary by Google Search
+nba22_23 <- nba22_23 %>% mutate(Salary = ifelse(Player == "Chance Comanche", "$5,849", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba22_23 <- nba22_23 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba22_23)
+dim(pergame22_23)
+dim(salary22_23)
+dim(nba22_23)
+```
+
+### 2021-2022 season
+```{r}
+pergame21_22 <- read_html("https://www.basketball-reference.com/leagues/NBA_2022_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header=T) %>%
+  .[[1]]
+pergame21_22 <- pergame21_22 %>% 
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2021-2022")
+
+# Clean Player names
+pergame21_22$Player <- stri_trans_general(pergame21_22$Player, "Latin-ASCII")
+pergame21_22$Player <- str_replace_all(pergame21_22$Player, "Jr\\.", "")
+pergame21_22$Player <- str_replace_all(pergame21_22$Player, "[[:punct:]]", "")
+pergame21_22$Player <- str_replace_all(pergame21_22$Player, "III", "")
+pergame21_22$Player <- str_replace_all(pergame21_22$Player, "II", "")
+pergame21_22$Player <- str_replace_all(pergame21_22$Player, "IV", "")
+
+pergame21_22$Player <- trimws(pergame21_22$Player)
+head(pergame21_22)
+
+salary21_22 <- read_html("https://hoopshype.com/salaries/players/2021-2022/") %>%
+  html_nodes("#main") %>%
+  html_table(header=T) %>%
+  .[[1]]
+salary21_22 <- salary21_22 %>%
+  select(Player, "2021/22") %>%
+  rename(Salary = `2021/22`) %>%
+  mutate(Season = "2021-2022")
+
+# Clean Player names
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Jr$", "")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "[[:punct:]]", "")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "III", "")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "II", "")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "IV", "")
+
+# Clean Nicknames
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Dennis Schroeder", "Dennis Schroder")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Scottie Pippen", "Scotty Pippen")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Cameron Whitmore", "Cam Whitmore")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Nicolas Claxton", "Nic Claxton")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Herb Jones", "Herbert Jones")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Santiago Aldama", "Santi Aldama")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Ishmael Smith", "Ish Smith")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Ishmail Wainright", "Ish Wainright")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Nate Williams", "Jeenathan Williams")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Patrick Mills", "Patty Mills")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Josh Primo", "Joshua Primo")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "JaVonte Smart", "Javonte Smart")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "BJ Boston", "Brandon Boston")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Juan Hernangomez", "Juancho Hernangomez")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Wesley Iwundu", "Wes Iwundu")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Louis Williams", "Lou Williams")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Moe Harkless", "Maurice Harkless")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Timothe Luwawu", "Timothe LuwawuCabarrot")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Anthony Barber", "Cat Barber")
+salary21_22$Player <- str_replace_all(salary21_22$Player, "Enes Kanter", "Enes Freedom")
+
+salary21_22$Player <- trimws(salary21_22$Player)
+head(salary21_22)
+
+# Join per game data and salary data
+nba21_22 <- full_join(pergame21_22, salary21_22)
+
+# Clean Player Salary by Google Search
+nba21_22 <- nba21_22 %>% mutate(Salary = ifelse(Player == "Gabe York", "$1,637,966", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba21_22 <- nba21_22 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba21_22)
+dim(pergame21_22)
+dim(salary21_22)
+dim(nba21_22)
+```
+
+### 2020-2021 season
+```{r}
+pergame20_21 <- read_html("https://www.basketball-reference.com/leagues/NBA_2021_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+
+pergame20_21 <- pergame20_21 %>%
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2020-2021")
+
+# Clean Player names
+pergame20_21$Player <- stri_trans_general(pergame20_21$Player, "Latin-ASCII")
+pergame20_21$Player <- str_replace_all(pergame20_21$Player, "Jr\\.", "")
+pergame20_21$Player <- str_replace_all(pergame20_21$Player, "[[:punct:]]", "")
+pergame20_21$Player <- str_replace_all(pergame20_21$Player, "III", "")
+pergame20_21$Player <- str_replace_all(pergame20_21$Player, "II", "")
+pergame20_21$Player <- str_replace_all(pergame20_21$Player, "IV", "")
+
+pergame20_21$Player <- trimws(pergame20_21$Player)
+head(pergame20_21)
+
+salary20_21 <- read_html("https://hoopshype.com/salaries/players/2020-2021/") %>%
+  html_nodes("#main") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+salary20_21 <- salary20_21 %>%
+  select(Player, "2020/21") %>%
+  rename(Salary = `2020/21`) %>%
+  mutate(Season = "2020-2021")
+
+# Clean Player names
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Jr$", "")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "[[:punct:]]", "")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "III", "")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "II", "")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "IV", "")
+
+# Clean Nicknames
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Dennis Schroeder", "Dennis Schroder")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Scottie Pippen", "Scotty Pippen")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Cameron Whitmore", "Cam Whitmore")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Nicolas Claxton", "Nic Claxton")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Herb Jones", "Herbert Jones")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Santiago Aldama", "Santi Aldama")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Ishmael Smith", "Ish Smith")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Ishmail Wainright", "Ish Wainright")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Nate Williams", "Jeenathan Williams")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Patrick Mills", "Patty Mills")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Josh Primo", "Joshua Primo")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "JaVonte Smart", "Javonte Smart")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "BJ Boston", "Brandon Boston")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Juan Hernangomez", "Juancho Hernangomez")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Wesley Iwundu", "Wes Iwundu")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Louis Williams", "Lou Williams")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Moe Harkless", "Maurice Harkless")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Timothe Luwawu", "Timothe LuwawuCabarrot")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Anthony Barber", "Cat Barber")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Cam Reynolds", "Cameron Reynolds")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Raymond Spalding", "Ray Spalding")
+salary20_21$Player <- str_replace_all(salary20_21$Player, "Enes Kanter", "Enes Freedom")
+
+salary20_21$Player <- trimws(salary20_21$Player)
+head(salary20_21)
+
+# Join per game data and salary data
+nba20_21 <- full_join(pergame20_21, salary20_21)
+
+# Clean Player Salary by Google Search
+nba20_21 <- nba20_21 %>% mutate(Salary = ifelse(Player == "Frank Mason", "$1,729,217", Salary))
+nba20_21 <- nba20_21 %>% mutate(Salary = ifelse(Player == "Robert Franks", "$1,445,697", Salary))
+nba20_21 <- nba20_21 %>% mutate(Salary = ifelse(Player == "Devin Cannady", "$898,310", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba20_21 <- nba20_21 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba20_21)
+dim(pergame20_21)
+dim(salary20_21)
+dim(nba20_21)
+```
+
+### 2019-2020 season
+```{r}
+pergame19_20 <- read_html("https://www.basketball-reference.com/leagues/NBA_2020_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+pergame19_20 <- pergame19_20 %>%
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2019-2020")
+
+# Clean Player names
+pergame19_20$Player <- stri_trans_general(pergame19_20$Player, "Latin-ASCII")
+pergame19_20$Player <- str_replace_all(pergame19_20$Player, "Jr\\.", "")
+pergame19_20$Player <- str_replace_all(pergame19_20$Player, "[[:punct:]]", "")
+pergame19_20$Player <- str_replace_all(pergame19_20$Player, "III", "")
+pergame19_20$Player <- str_replace_all(pergame19_20$Player, "II", "")
+pergame19_20$Player <- str_replace_all(pergame19_20$Player, "IV", "")
+
+pergame19_20$Player <- trimws(pergame19_20$Player)
+head(pergame19_20)
+
+salary19_20 <- read_html("https://hoopshype.com/salaries/players/2019-2020/") %>%
+  html_nodes("#main") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+salary19_20 <- salary19_20 %>%
+  select(Player, "2019/20") %>%
+  rename(Salary = `2019/20`) %>%
+  mutate(Season = "2019-2020")
+
+# Clean Player names
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Jr$", "")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "[[:punct:]]", "")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "III", "")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "II", "")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "IV", "")
+
+# Clean Nicknames
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Dennis Schroeder", "Dennis Schroder")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Scottie Pippen", "Scotty Pippen")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Cameron Whitmore", "Cam Whitmore")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Nicolas Claxton", "Nic Claxton")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Herb Jones", "Herbert Jones")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Santiago Aldama", "Santi Aldama")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Ishmael Smith", "Ish Smith")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Ishmail Wainright", "Ish Wainright")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Nate Williams", "Jeenathan Williams")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Patrick Mills", "Patty Mills")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Josh Primo", "Joshua Primo")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "JaVonte Smart", "Javonte Smart")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "BJ Boston", "Brandon Boston")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Juan Hernangomez", "Juancho Hernangomez")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Wesley Iwundu", "Wes Iwundu")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Louis Williams", "Lou Williams")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Moe Harkless", "Maurice Harkless")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Timothe Luwawu", "Timothe LuwawuCabarrot")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Anthony Barber", "Cat Barber")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Cam Reynolds", "Cameron Reynolds")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Raymond Spalding", "Ray Spalding")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Jose Juan Barea", "JJ Barea")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Naz Long", "Naz MitrouLong")
+salary19_20$Player <- str_replace_all(salary19_20$Player, "Enes Kanter", "Enes Freedom")
+
+salary19_20$Player <- trimws(salary19_20$Player)
+head(salary19_20)
+
+# Join per game data and salary data
+nba19_20 <- full_join(pergame19_20, salary19_20)
+
+# Clean Player Salary by Google Search
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Isaiah Thomas", "$2,320,044", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Lance Thomas", "$262,152", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Marquese Chriss", "$654,468", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Marques Bolden", "$50,752", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Jeremy Pargo", "$91,557", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Allonzo Trier", "$3,551,000", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Eric Mika", "$898,310", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Kadeem Allen", "$154,500", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Allen Crabbe", "$18,500,000", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Iman Shumpert", "$1,419,138", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Tim Frazier", "$1,620,564", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Tyrone Wallace", "$1,588,231", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Justin Robinson", "$898,310", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Jarrod Uthoff", "$163,356", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Ryan Anderson", "$2,564,753", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Shamorie Ponds", "$898,310", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Zach Norvell", "$79,568", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Devon Hall", "$101,504", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Luc Mbah a Moute", "$289,803", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Amile Jefferson", "$1,529,007", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Josh Magette", "$79,568", Salary))
+nba19_20 <- nba19_20 %>% mutate(Salary = ifelse(Player == "Daryl Macon", "$1,445,697", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba19_20 <- nba19_20 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba19_20)
+dim(pergame19_20)
+dim(salary19_20)
+dim(nba19_20)
+```
+
+### 2018-2019 Season
+```{r}
+pergame18_19 <- read_html("https://www.basketball-reference.com/leagues/NBA_2019_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+pergame18_19 <- pergame18_19 %>%
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2018-2019")
+
+# Clean Player names
+pergame18_19$Player <- stri_trans_general(pergame18_19$Player, "Latin-ASCII")
+pergame18_19$Player <- str_replace_all(pergame18_19$Player, "Jr\\.", "")
+pergame18_19$Player <- str_replace_all(pergame18_19$Player, "[[:punct:]]", "")
+pergame18_19$Player <- str_replace_all(pergame18_19$Player, "III", "")
+pergame18_19$Player <- str_replace_all(pergame18_19$Player, "II", "")
+pergame18_19$Player <- str_replace_all(pergame18_19$Player, "IV", "")
+
+pergame18_19$Player <- trimws(pergame18_19$Player)
+head(pergame18_19)
+
+salary18_19 <- read_html("https://hoopshype.com/salaries/players/2018-2019/") %>%
+  html_nodes("#main") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+salary18_19 <- salary18_19 %>%
+  select(Player, "2018/19") %>%
+  rename(Salary = `2018/19`) %>%
+  mutate(Season = "2018-2019")
+
+# Clean Player names
+salary18_19$Player <- stri_trans_general(salary18_19$Player, "Latin-ASCII")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Jr$", "")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "[[:punct:]]", "")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "III", "")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "II", "")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "IV", "")
+
+# Clean Nicknames
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Dennis Schroeder", "Dennis Schroder")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Scottie Pippen", "Scotty Pippen")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Cameron Whitmore", "Cam Whitmore")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Nicolas Claxton", "Nic Claxton")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Herb Jones", "Herbert Jones")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Santiago Aldama", "Santi Aldama")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Ishmael Smith", "Ish Smith")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Ishmail Wainright", "Ish Wainright")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Nate Williams", "Jeenathan Williams")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Patrick Mills", "Patty Mills")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Josh Primo", "Joshua Primo")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "JaVonte Smart", "Javonte Smart")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "BJ Boston", "Brandon Boston")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Juan Hernangomez", "Juancho Hernangomez")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Wesley Iwundu", "Wes Iwundu")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Louis Williams", "Lou Williams")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Moe Harkless", "Maurice Harkless")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Timothe Luwawu", "Timothe LuwawuCabarrot")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Anthony Barber", "Cat Barber")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Cam Reynolds", "Cameron Reynolds")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Raymond Spalding", "Ray Spalding")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Jose Juan Barea", "JJ Barea")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Naz Long", "Naz MitrouLong")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Walter Lemon", "Walt Lemon")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Enes Kanter", "Enes Freedom")
+salary18_19$Player <- str_replace_all(salary18_19$Player, "Vincent Edwards", "Vince Edwards")
+
+salary18_19$Player <- trimws(salary18_19$Player)
+head(salary18_19)
+
+# Join per game data and salary data
+nba18_19 <- full_join(pergame18_19, salary18_19)
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba18_19 <- nba18_19 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba18_19)
+dim(pergame18_19)
+dim(salary18_19)
+dim(nba18_19)
+```
+
+### 2017-2018 Season
+```{r}
+# Replace years in the URLs and season strings
+pergame17_18 <- read_html("https://www.basketball-reference.com/leagues/NBA_2018_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+pergame17_18 <- pergame17_18 %>%
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2017-2018")
+
+# Clean Player names
+pergame17_18$Player <- stri_trans_general(pergame17_18$Player, "Latin-ASCII")
+pergame17_18$Player <- str_replace_all(pergame17_18$Player, "Jr\\.", "")
+pergame17_18$Player <- str_replace_all(pergame17_18$Player, "[[:punct:]]", "")
+pergame17_18$Player <- str_replace_all(pergame17_18$Player, "III", "")
+pergame17_18$Player <- str_replace_all(pergame17_18$Player, "II", "")
+pergame17_18$Player <- str_replace_all(pergame17_18$Player, "IV", "")
+
+pergame17_18$Player <- trimws(pergame17_18$Player)
+head(pergame17_18)
+
+salary17_18 <- read_html("https://hoopshype.com/salaries/players/2017-2018/") %>%
+  html_nodes("#main") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+salary17_18 <- salary17_18 %>%
+  select(Player, "2017/18") %>%
+  rename(Salary = `2017/18`) %>%
+  mutate(Season = "2017-2018")
+
+# Clean Player names
+salary17_18$Player <- stri_trans_general(salary17_18$Player, "Latin-ASCII")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Jr$", "")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "[[:punct:]]", "")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "III", "")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "II", "")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "IV", "")
+
+# Clean Nicknames
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Dennis Schroeder", "Dennis Schroder")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Scottie Pippen", "Scotty Pippen")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Cameron Whitmore", "Cam Whitmore")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Nicolas Claxton", "Nic Claxton")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Herb Jones", "Herbert Jones")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Santiago Aldama", "Santi Aldama")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Ishmael Smith", "Ish Smith")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Ishmail Wainright", "Ish Wainright")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Nate Williams", "Jeenathan Williams")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Patrick Mills", "Patty Mills")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Josh Primo", "Joshua Primo")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "JaVonte Smart", "Javonte Smart")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "BJ Boston", "Brandon Boston")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Juan Hernangomez", "Juancho Hernangomez")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Wesley Iwundu", "Wes Iwundu")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Louis Williams", "Lou Williams")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Moe Harkless", "Maurice Harkless")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Timothe Luwawu", "Timothe LuwawuCabarrot")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Anthony Barber", "Cat Barber")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Cam Reynolds", "Cameron Reynolds")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Raymond Spalding", "Ray Spalding")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Jose Juan Barea", "JJ Barea")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Naz Long", "Naz MitrouLong")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Walter Lemon", "Walt Lemon")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Enes Kanter", "Enes Freedom")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Vincent Edwards", "Vince Edwards")
+salary17_18$Player <- str_replace_all(salary17_18$Player, "Joseph Young", "Joe Young")
+
+salary17_18$Player <- trimws(salary17_18$Player)
+head(salary17_18)
+
+# Join per game data and salary data
+nba17_18 <- full_join(pergame17_18, salary17_18)
+
+# Clean Player Salary by Google Search
+nba17_18 <- nba17_18 %>% mutate(Salary = ifelse(Player == "Xavier RathanMayes", "$816,000", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba17_18 <- nba17_18 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba17_18)
+dim(pergame17_18)
+dim(salary17_18)
+dim(nba17_18)
+
+```
+
+### 2016-2017 Season
+```{r}
+pergame16_17 <- read_html("https://www.basketball-reference.com/leagues/NBA_2017_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+pergame16_17 <- pergame16_17 %>%
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2016-2017")
+
+# Clean Player names
+pergame16_17$Player <- stri_trans_general(pergame16_17$Player, "Latin-ASCII")
+pergame16_17$Player <- str_replace_all(pergame16_17$Player, "Jr\\.", "")
+pergame16_17$Player <- str_replace_all(pergame16_17$Player, "[[:punct:]]", "")
+pergame16_17$Player <- str_replace_all(pergame16_17$Player, "III", "")
+pergame16_17$Player <- str_replace_all(pergame16_17$Player, "II", "")
+pergame16_17$Player <- str_replace_all(pergame16_17$Player, "IV", "")
+
+pergame16_17$Player <- trimws(pergame16_17$Player)
+head(pergame16_17)
+
+salary16_17 <- read_html("https://hoopshype.com/salaries/players/2016-2017/") %>%
+  html_nodes("#main") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+salary16_17 <- salary16_17 %>%
+  select(Player, "2016/17") %>%
+  rename(Salary = `2016/17`) %>%
+  mutate(Season = "2016-2017")
+
+# Clean Player names
+salary16_17$Player <- stri_trans_general(salary16_17$Player, "Latin-ASCII")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Jr$", "")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "[[:punct:]]", "")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "III", "")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "II", "")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "IV", "")
+
+# Clean Nicknames
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Dennis Schroeder", "Dennis Schroder")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Scottie Pippen", "Scotty Pippen")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Cameron Whitmore", "Cam Whitmore")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Nicolas Claxton", "Nic Claxton")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Herb Jones", "Herbert Jones")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Santiago Aldama", "Santi Aldama")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Ishmael Smith", "Ish Smith")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Ishmail Wainright", "Ish Wainright")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Nate Williams", "Jeenathan Williams")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Patrick Mills", "Patty Mills")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Josh Primo", "Joshua Primo")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "JaVonte Smart", "Javonte Smart")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "BJ Boston", "Brandon Boston")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Juan Hernangomez", "Juancho Hernangomez")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Wesley Iwundu", "Wes Iwundu")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Louis Williams", "Lou Williams")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Moe Harkless", "Maurice Harkless")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Timothe Luwawu", "Timothe LuwawuCabarrot")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Anthony Barber", "Cat Barber")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Cam Reynolds", "Cameron Reynolds")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Raymond Spalding", "Ray Spalding")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Jose Juan Barea", "JJ Barea")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Naz Long", "Naz MitrouLong")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Walter Lemon", "Walt Lemon")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Enes Kanter", "Enes Freedom")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Vincent Edwards", "Vince Edwards")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Walter Tavares", "Edy Tavares")
+salary16_17$Player <- str_replace_all(salary16_17$Player, "Joseph Young", "Joe Young")
+
+salary16_17$Player <- trimws(salary16_17$Player)
+head(salary16_17)
+
+# Join per game data and salary data
+nba16_17 <- full_join(pergame16_17, salary16_17)
+
+# Clean Player Salary by Google Search
+nba16_17 <- nba16_17 %>% mutate(Salary = ifelse(Player == "Willie Reed", "$1,015,696", Salary))
+nba16_17 <- nba16_17 %>% mutate(Salary = ifelse(Player == "Justin Harper", "$5,975", Salary))
+nba16_17 <- nba16_17 %>% mutate(Salary = ifelse(Player == "Elijah Millsap", "$773,687", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba16_17 <- nba16_17 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba16_17)
+dim(pergame16_17)
+dim(salary16_17)
+dim(nba16_17)
+```
+
+### 2015-2016 Season
+```{r}
+#| error: true
+
+pergame15_16 <- read_html("https://www.basketball-reference.com/leagues/NBA_2016_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+pergame15_16 <- pergame15_16 %>%
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2015-2016")
+
+# Clean Player names
+pergame15_16$Player <- stri_trans_general(pergame15_16$Player, "Latin-ASCII")
+pergame15_16$Player <- str_replace_all(pergame15_16$Player, "Jr\\.", "")
+pergame15_16$Player <- str_replace_all(pergame15_16$Player, "[[:punct:]]", "")
+pergame15_16$Player <- str_replace_all(pergame15_16$Player, "III", "")
+pergame15_16$Player <- str_replace_all(pergame15_16$Player, "II", "")
+pergame15_16$Player <- str_replace_all(pergame15_16$Player, "IV", "")
+
+pergame15_16$Player <- trimws(pergame15_16$Player)
+head(pergame15_16)
+
+salary15_16 <- read_html("https://hoopshype.com/salaries/players/2015-2016/") %>%
+  html_nodes("#main") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+salary15_16 <- salary15_16 %>%
+  select(Player, "2015/16") %>%
+  rename(Salary = `2015/16`) %>%
+  mutate(Season = "2015-2016")
+
+# Clean Player names
+salary15_16$Player <- stri_trans_general(salary15_16$Player, "Latin-ASCII")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Jr$", "")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "[[:punct:]]", "")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "III", "")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "II", "")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "IV", "")
+
+# Clean Nicknames
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Dennis Schroeder", "Dennis Schroder")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Scottie Pippen", "Scotty Pippen")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Cameron Whitmore", "Cam Whitmore")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Nicolas Claxton", "Nic Claxton")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Herb Jones", "Herbert Jones")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Santiago Aldama", "Santi Aldama")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Ishmael Smith", "Ish Smith")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Ishmail Wainright", "Ish Wainright")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Nate Williams", "Jeenathan Williams")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Patrick Mills", "Patty Mills")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Josh Primo", "Joshua Primo")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "JaVonte Smart", "Javonte Smart")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "BJ Boston", "Brandon Boston")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Juan Hernangomez", "Juancho Hernangomez")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Wesley Iwundu", "Wes Iwundu")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Louis Williams", "Lou Williams")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Moe Harkless", "Maurice Harkless")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Timothe Luwawu", "Timothe LuwawuCabarrot")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Anthony Barber", "Cat Barber")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Cam Reynolds", "Cameron Reynolds")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Raymond Spalding", "Ray Spalding")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Jose Juan Barea", "JJ Barea")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Naz Long", "Naz MitrouLong")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Walter Lemon", "Walt Lemon")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Enes Kanter", "Enes Freedom")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Vincent Edwards", "Vince Edwards")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Walter Tavares", "Edy Tavares")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Maurice Williams", "Mo Williams")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Christapher Johnson", "Chris Johnson")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Louis Amundson", "Lou Amundson")
+salary15_16$Player <- str_replace_all(salary15_16$Player, "Joseph Young", "Joe Young")
+
+salary15_16$Player <- trimws(salary15_16$Player)
+head(salary15_16)
+
+# Join per game data and salary data
+nba15_16 <- full_join(pergame15_16, salary15_16)
+
+# Clean Player Salary by Google Search
+nba15_16 <- nba15_16 %>% mutate(Salary = ifelse(Player == "Dahntay Jones", "$780,239", Salary))
+nba15_16 <- nba15_16 %>% mutate(Salary = ifelse(Player == "Donatas Motiejunas", "$1,483,920", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba15_16 <- nba15_16 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba15_16)
+dim(pergame15_16)
+dim(salary15_16)
+dim(nba15_16)
+```
+
+### 2014-2015 Season
+```{r}
+pergame14_15 <- read_html("https://www.basketball-reference.com/leagues/NBA_2015_per_game.html") %>%
+  html_nodes("#per_game_stats") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+pergame14_15 <- pergame14_15 %>%
+  filter(Player != "League Average") %>%
+  select(-Rk, -Awards) %>%
+  mutate(Season = "2014-2015")
+
+# Clean Player names
+pergame14_15$Player <- stri_trans_general(pergame14_15$Player, "Latin-ASCII")
+pergame14_15$Player <- str_replace_all(pergame14_15$Player, "Jr\\.", "")
+pergame14_15$Player <- str_replace_all(pergame14_15$Player, "[[:punct:]]", "")
+pergame14_15$Player <- str_replace_all(pergame14_15$Player, "III", "")
+pergame14_15$Player <- str_replace_all(pergame14_15$Player, "II", "")
+pergame14_15$Player <- str_replace_all(pergame14_15$Player, "IV", "")
+
+pergame14_15$Player <- trimws(pergame14_15$Player)
+head(pergame14_15)
+
+salary14_15 <- read_html("https://hoopshype.com/salaries/players/2014-2015/") %>%
+  html_nodes("#main") %>%
+  html_table(header = TRUE) %>%
+  .[[1]]
+salary14_15 <- salary14_15 %>%
+  select(Player, "2014/15") %>%
+  rename(Salary = `2014/15`) %>%
+  mutate(Season = "2014-2015")
+
+# Clean Player names
+salary14_15$Player <- stri_trans_general(salary14_15$Player, "Latin-ASCII")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Jr$", "")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "[[:punct:]]", "")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "III", "")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "II", "")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "IV", "")
+
+# Clean Nicknames
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Dennis Schroeder", "Dennis Schroder")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Scottie Pippen", "Scotty Pippen")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Cameron Whitmore", "Cam Whitmore")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Nicolas Claxton", "Nic Claxton")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Herb Jones", "Herbert Jones")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Santiago Aldama", "Santi Aldama")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Xavier Tillman", "Xavier Tillman Sr")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Ishmael Smith", "Ish Smith")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Ishmail Wainright", "Ish Wainright")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Sviatoslav Mykhailiuk", "Svi Mykhailiuk")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Nate Williams", "Jeenathan Williams")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Patrick Mills", "Patty Mills")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Josh Primo", "Joshua Primo")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "JaVonte Smart", "Javonte Smart")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "BJ Boston", "Brandon Boston")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Juan Hernangomez", "Juancho Hernangomez")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Wesley Iwundu", "Wes Iwundu")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Louis Williams", "Lou Williams")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Moe Harkless", "Maurice Harkless")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Timothe Luwawu", "Timothe LuwawuCabarrot")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Anthony Barber", "Cat Barber")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Cam Reynolds", "Cameron Reynolds")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Raymond Spalding", "Ray Spalding")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Jose Juan Barea", "JJ Barea")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Naz Long", "Naz MitrouLong")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Walter Lemon", "Walt Lemon")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Enes Kanter", "Enes Freedom")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Vincent Edwards", "Vince Edwards")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Walter Tavares", "Edy Tavares")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Maurice Williams", "Mo Williams")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Christapher Johnson", "Chris Johnson")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Louis Amundson", "Lou Amundson")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Joseph Young", "Joe Young")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Jeffery Taylor", "Jeff Taylor")
+salary14_15$Player <- str_replace_all(salary14_15$Player, "Hidayet Turkoglu", "Hedo Turkoglu")
+
+salary14_15$Player <- trimws(salary14_15$Player)
+head(salary14_15)
+
+# Join per game data and salary data
+nba14_15 <- full_join(pergame14_15, salary14_15)
+
+# Clean Player Salary by Google Search
+nba14_15 <- nba14_15 %>% mutate(Salary = ifelse(Player == "Jared Cunningham", "$915,000", Salary))
+nba14_15 <- nba14_15 %>% mutate(Salary = ifelse(Player == "Patrick Christopher", "$612,035", Salary))
+nba14_15 <- nba14_15 %>% mutate(Salary = ifelse(Player == "Jerrelle Benimon", "$676,198", Salary))
+
+# Add a new column to indicate the number of teams a player played for in a season and replace 2TM 3TM 4TM values
+nba14_15 <- nba14_15 %>%
+  mutate( 
+    Num_Teams = case_when(
+      Team == "2TM" ~ 2,
+      Team == "3TM" ~ 3,
+      Team == "4TM" ~ 4,
+      TRUE ~ 1
+    )
+  ) %>%
+  group_by(Player) %>%
+  mutate(Team = ifelse(Team %in% c("2TM", "3TM", "4TM"), last(Team[!Team %in% c("2TM", "3TM", "4TM")]), Team)) %>%
+  slice(1) %>%
+  ungroup() %>%
+  select(Player, Age, Team, Num_Teams, everything())
+
+head(nba14_15)
+dim(pergame14_15)
+dim(salary14_15)
+dim(nba14_15)
+```
+
+### Merge all 10 datasets
+```{r}
+nba.salary <- bind_rows(nba23_24, nba22_23, nba21_22, nba20_21, nba19_20, nba18_19, nba17_18, nba16_17, nba15_16, nba14_15)
+nba.salary <- nba.salary %>% filter(!is.na(Salary))
+nba.salary$Salary <- gsub("\\$", "", nba.salary$Salary)
+nba.salary$Salary <- gsub(",", "", nba.salary$Salary)
+nba.salary$Salary <- as.integer(nba.salary$Salary)
+nba.salary <- nba.salary %>% mutate(across(6:30, ~ replace_na(., 0)))
+```
+
+# Data Visualization
+```{r}
+#| eval: False
+ 
+library(shiny)
+library(plotly)
+library(ggplot2)
+library(dplyr)
+library(reactable)
+library(readxl)
+library(tidyverse)
+
+nba.salary <- read_csv("https://raw.githubusercontent.com/summeryyang/visualizations/main/nbasalary.csv")
+
+# UI
+ui <- fluidPage(
+  titlePanel("NBA Salary Analysis"),
+  
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("tabs", "Select a Tab:", 
+                  choices = c("Salary Distribution", "Minutes Played vs Salary", 
+                              "Salary vs Points Per Game vs Minutes Played", "Top 10 Paid Players")),
+      conditionalPanel(
+        condition = "input.tabs == 'Minutes Played vs Salary'",
+        selectInput("selected_team_mp",
+                    label = "Select Team:",
+                    choices = c("All Teams", unique(nba.salary$Team)),
+                    selected = "All Teams"),
+        selectInput("selected_season_mp",
+                    label = "Select Season:",
+                    choices = c("All Seasons", unique(nba.salary$Season)),
+                    selected = "All Seasons")
+      ),
+      conditionalPanel(
+        condition = "input.tabs == 'Salary vs Points Per Game vs Minutes Played'",
+        selectInput("selected_team_3d",
+                    label = "Select Team:",
+                    choices = unique(nba.salary$Team),
+                    selected = unique(nba.salary$Team)[1]),
+        selectInput("selected_season_3d",
+                    label = "Select Season:",
+                    choices = unique(nba.salary$Season),
+                    selected = unique(nba.salary$Season)[1]),
+        actionButton("update_3d", "Update!")
+      ),
+      conditionalPanel(
+        condition = "input.tabs == 'Top 10 Paid Players'",
+        selectInput("selected_team_table",
+                    label = "Select Team:",
+                    choices = c("All Teams", unique(nba.salary$Team)),
+                    selected = "All Teams"),
+        selectInput("selected_season_table",
+                    label = "Select Season:",
+                    choices = c("All Seasons", unique(nba.salary$Season)),
+                    selected = "All Seasons")
+      )
+    ),
+    
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Salary Distribution", plotlyOutput("salary_boxplot")),
+        tabPanel("Minutes Played vs Salary", plotlyOutput("mp_salary_plot")),
+        tabPanel("Salary vs Points Per Game vs Minutes Played", plotlyOutput("scatterplot_3d")),
+        tabPanel("Top 10 Paid Players", reactableOutput("top10_table"))
+      )
+    )
+  )
+)
+
+# Server
+server <- function(input, output) {
+  
+  # Salary Boxplots
+  output$salary_boxplot <- renderPlotly({
+    plot <- ggplot(nba.salary, aes(x = Season, y = Salary)) +
+      geom_boxplot(aes(fill = Season)) +
+      scale_y_continuous(labels = scales::dollar_format()) +  # Format salary as dollars
+      labs(title = "NBA Salary Distribution by Season",
+           x = "Season", 
+           y = "Salary") +
+      theme_minimal()
+    
+    ggplotly(plot, tooltip = c("x", "y")) %>%
+      layout(hovermode = "closest")
+  })
+  
+  # Server: Minutes Played vs Salary
+  team_name_mp <- reactive({
+    filtered_data <- nba.salary
+    
+    if (input$selected_team_mp != "All Teams") {
+      filtered_data <- filtered_data %>%
+        filter(Team == input$selected_team_mp)
+    }
+    
+    if (input$selected_season_mp != "All Seasons") {
+      filtered_data <- filtered_data %>%
+        filter(Season == input$selected_season_mp)
+    }
+    
+    # Retain the full list of seasons for consistent color scaling
+    filtered_data <- filtered_data %>%
+      mutate(Season = factor(Season, levels = sort(unique(nba.salary$Season), decreasing = TRUE)))  # Use all seasons, not just filtered
+    
+    list(
+      data = filtered_data,
+      title = paste(
+        "Minutes Played vs Salary for",
+        ifelse(input$selected_team_mp == "All Teams", "All Teams", input$selected_team_mp),
+        "in",
+        ifelse(input$selected_season_mp == "All Seasons", "All Seasons", input$selected_season_mp)
+      )
+    )
+  })
+  
+  # Server: Plot rendering with consistent color coding for Seasons
+  output$mp_salary_plot <- renderPlotly({
+    req(team_name_mp())  # Ensure data is available before rendering
+    
+    plot_ly(data = team_name_mp()$data, 
+            x = ~MP, 
+            y = ~Salary, 
+            type = 'scatter', 
+            mode = 'markers', 
+            color = ~Season,  # Color code by Season
+            colors = "Set1",  # Use a consistent color palette
+            marker = list(size = 10),
+            text = ~paste("Player: ", Player, "<br>MP: ", MP, "<br>Salary: $", Salary),  
+            hoverinfo = 'text') %>%
+      layout(title = team_name_mp()$title,
+             xaxis = list(title = "Minutes Played (MP)"),
+             yaxis = list(title = "Salary (USD)"),
+             coloraxis = list(reversescale = TRUE))  # Keep consistent color scale
+  })
+  
+  
+  # 3D Scatter Plot: Salary vs Points Per Game vs Minutes Played
+  filtered_pts <- eventReactive(input$update_3d, {
+    nba.salary %>%
+      filter(Team == input$selected_team_3d, Season == input$selected_season_3d)
+  })
+  
+  plot_title_3d <- eventReactive(input$update_3d, {
+    paste("Salary vs Points Per Game vs Minutes Played:", input$selected_team_3d, "in", input$selected_season_3d)
+  })
+  
+  output$scatterplot_3d <- renderPlotly({
+    plot_ly(
+      data = filtered_pts(),
+      x = ~MP, 
+      y = ~PTS,  
+      z = ~Salary, 
+      type = "scatter3d", 
+      mode = "markers",
+      marker = list(size = 5, color = ~Salary, colorscale = 'Viridis', showscale = TRUE),
+      text = ~paste(Player, "<br>MP: ", MP, "<br>PPG: ", PTS, "<br>Salary: $", Salary),  
+      hoverinfo = 'text') %>%
+      layout(
+        scene = list(
+          xaxis = list(title = "Minutes Played"),
+          yaxis = list(title = "Points Per Game"),
+          zaxis = list(title = "Salary (USD)")
+        ),
+        title = plot_title_3d()
+      )
+  })
+  
+  # Top 10 Paid Players
+  top10_players <- reactive({
+    filtered_data <- nba.salary
+    
+    if (input$selected_team_table != "All Teams") {
+      filtered_data <- filtered_data %>%
+        filter(Team == input$selected_team_table)
+    }
+    
+    if (input$selected_season_table != "All Seasons") {
+      filtered_data <- filtered_data %>%
+        filter(Season == input$selected_season_table)
+    }
+    
+    filtered_data %>%
+      arrange(desc(Salary)) %>%                
+      select(Player, Salary, Team, Season, MP, PTS, AST, TRB) %>%  
+      head(10)                                 
+  })
+  
+  output$top10_table <- renderReactable({
+    data <- top10_players()
+    
+    salary_normalized <- (data$Salary - min(data$Salary)) / 
+      (max(data$Salary) - min(data$Salary))
+    salary_colors <- rgb(colorRamp(c("white", "darkorange"))(salary_normalized), maxColorValue = 255)
+    
+    reactable(
+      data,
+      filterable = TRUE,
+      pagination = TRUE,       
+      defaultPageSize = 10,    
+      showPagination = FALSE,
+      columns = list(
+        Player = colDef(name = "Player Name"),
+        Salary = colDef(name = "Salary (USD)", 
+                        format = colFormat(currency = "USD", 
+                                           separators = TRUE), 
+                        filterable = FALSE,
+                        style = JS("function(rowInfo, column, state) {
+                          const salaryColors = state.meta.salaryColors;
+                          return { backgroundColor: salaryColors[rowInfo.index] };
+                        }")
+        ),
+        Team = colDef(filterable = FALSE),
+        Season = colDef(filterable = FALSE),
+        MP = colDef(name = "Minutes Played per Game", filterable = FALSE),
+        PTS = colDef(name = "Points per Game", filterable = FALSE),
+        AST = colDef(name = "Assists per Game", filterable = FALSE),
+        TRB = colDef(name = "Rebounds per Game", filterable = FALSE)
+      ),
+      defaultSorted = list(Salary = "desc"),
+      highlight = TRUE,           
+      meta = list(salaryColors = salary_colors)  
+    )
+  })
+}
+
+# Run the Shiny app
+shinyApp(ui = ui, server = server)
+```
+<https://summeryang.shinyapps.io/visualization/>
+
+# Modeling
+```{r}
+#| message: false
+#| warning: false
+
+library(tidymodels)
+library(embed)
+library(stacks)
+library(iml)
+library(gridExtra)
+library(future)
+library(future.callr)
+library(polite)
+library(zoo)
+library(yardstick)
+library(parsnip)
+library(ranger)
+library(gt)
+library(vip)
+```
+
+```{r}
+# more feature engineering
+# log salary to deal with right skew
+nba.salary$logsalary <- log(nba.salary$Salary)
+
+ggplot(nba.salary, aes(x = logsalary)) +
+  geom_histogram(binwidth = 0.25, color = "black", fill = "skyblue") +
+  labs(title = "Histogram of Log(Salary)",
+       x = "Log(Salary)",
+       y = "Frequency") +
+  theme_minimal()
+
+#edit the 'Season' column to only show the start year
+nba.salary$season <- sub("-.*", "", nba.salary$Season)
+
+#convert to integer
+nba.salary$season <- as.integer(nba.salary$season)
+
+# calculate the number of years played for each player
+nba.salary <- nba.salary %>%
+  group_by(Player) %>%
+  mutate(first_season = min(season, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(years_played = season - first_season + 1) %>%
+  select(-first_season)
+
+# Remove rows with any NA values
+nba.salary <- na.omit(nba.salary)
+dim(nba.salary)
+
+# write.csv(nba.salary,"/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nbasalary.csv", row.names = FALSE)
+
+nba.salary <- read.csv("/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nbasalary.csv")
+```
+
+### Recipe and Prep
+```{r}
+# Data split
+set.seed(123)
+nbasalary_split  <- initial_split(nba.salary, prop = 0.8, strata = "logsalary")
+nbasalary_train  <- training(nbasalary_split)
+nbasalary_test   <- testing(nbasalary_split)
+
+# Recipe
+nbasalary_rec <- recipe(logsalary ~ ., data = nbasalary_train) %>% 
+                update_role(Player, new_role = "id variable") %>%
+                step_rm(Salary, Season) %>%  # remove the original Salary column
+                step_YeoJohnson(all_numeric_predictors()) %>%
+                step_normalize(all_numeric_predictors()) %>% 
+                step_novel(all_nominal_predictors()) %>%  # Handle unseen levels as "novel"
+                step_dummy(all_nominal_predictors(), one_hot = FALSE)
+
+nbasalary_prep <- prep(nbasalary_rec)
+juice <- juice(nbasalary_prep)
+
+nbasalary_kfolds <- vfold_cv(nbasalary_train, v = 5, repeats = 2, strata = "logsalary")
+
+ctrl_grid <- control_stack_grid()
+ctrl_res <- control_stack_resamples()
+```
+
+### Linear Regression
+```{r}
+nbasalary_lm <- linear_reg() %>% 
+                  set_mode("regression") %>%
+                  set_engine("lm")
+
+nbasalary_wf_lm <- workflow() %>% 
+            add_recipe(nbasalary_rec) %>% 
+            add_model(nbasalary_lm)
+
+set.seed(123)
+nbasalary_resample <- fit_resamples(
+  nbasalary_wf_lm,
+  resamples = nbasalary_kfolds,
+  metrics = metric_set(yardstick::rmse),
+  control = ctrl_res
+)
+
+# Linear Regression Top Model
+nbasalary_resample %>% 
+  show_best(metric = 'rmse') %>%
+  dplyr::select(mean)
+
+# Fit the model to the full training dataset
+nbasalary_lm_train_fit <- nbasalary_wf_lm %>% 
+  fit(data = nbasalary_train)
+
+nbasalary_lm_train_predictions <- predict(nbasalary_lm_train_fit, nbasalary_train) %>%
+  bind_cols(nbasalary_train)
+
+# train RMSE
+lm_train_rmse <- nbasalary_lm_train_predictions %>%
+  metrics(truth = logsalary, estimate = .pred) %>%
+  filter(.metric == "rmse")
+
+# Evaluate Test data RMSE
+lm_test_rmse <- nbasalary_wf_lm %>%
+  last_fit(nbasalary_split, 
+               metrics = metric_set(yardstick::rmse)) %>%
+  collect_metrics()
+
+nbasalary_wf_lm %>%
+  fit(nbasalary_train) %>%
+  extract_fit_parsnip() %>%
+  tidy()
+```
+
+### Penalized Regression
+```{r}
+nbasalary_glmnet <- linear_reg(
+                  penalty = tune(), 
+                  mixture = tune()) %>% 
+                  set_mode("regression") %>%
+                  set_engine("glmnet") 
+
+#Specify modeling procedure
+nbasalary_wf_glmnet <- workflow() %>% 
+            add_recipe(nbasalary_rec) %>% 
+            add_model(nbasalary_glmnet)
+
+glmnet_grid <- grid_space_filling(
+  extract_parameter_set_dials(nbasalary_glmnet), 
+  size = 6,
+  type = "max_entropy")
+
+#Tune the model
+set.seed(123)
+nbasalary_glmnet_tune <- tune_grid(
+              nbasalary_wf_glmnet,
+              resamples = nbasalary_kfolds,
+              grid = glmnet_grid,
+              control = ctrl_grid,
+              metrics = metric_set(yardstick::rmse))
+```
+
+```{r}
+# Penalized Regression Top Model
+nbasalary_glmnet_tune %>% 
+  show_best(metric = "rmse", n=1) %>%
+  dplyr::select(mean)
+
+# RMSE on test data
+nbasalary_glmnet_best_tune <- nbasalary_glmnet_tune %>% select_best(metric = "rmse")
+
+# Update Workflow
+nbasalary_glmnet_wf2 <- nbasalary_wf_glmnet %>% 
+                        finalize_workflow(nbasalary_glmnet_best_tune)
+
+# Fit the model to the full training dataset
+nbasalary_glmnet_train_fit <- nbasalary_glmnet_wf2 %>% 
+  fit(data = nbasalary_train)
+
+nbasalary_glmnet_train_predictions <- predict(nbasalary_glmnet_train_fit, nbasalary_train) %>%
+  bind_cols(nbasalary_train)
+
+# train RMSE
+glmnet_train_rmse <- nbasalary_glmnet_train_predictions %>%
+  metrics(truth = logsalary, estimate = .pred) %>%
+  filter(.metric == "rmse")
+
+# Evaluate Test Sets
+glmnet_test_rmse <- nbasalary_glmnet_wf2 %>% 
+  last_fit(nbasalary_split, 
+           metrics = metric_set(yardstick::rmse)) %>% 
+  collect_metrics()
+
+```
+
+### Random Forest
+```{r}
+##Fit model with tuning grid
+nbasalary_rf <- rand_forest(trees = 64*10,
+                               mtry = tune(),
+                               min_n = tune()) %>%
+                    set_mode("regression") %>%
+                    set_engine("ranger", importance = 'impurity', seed = 123, num.threads = 7)
+
+nbasalary_rf_wf <- workflow() %>% 
+                      add_recipe(nbasalary_rec) %>% 
+                      add_model(nbasalary_rf)
+
+nbasalary_rf_param <- extract_parameter_set_dials(nbasalary_rf) %>% 
+                    update(mtry = mtry(c(1, 64)))
+
+nbasalary_rf_grid_tune <- grid_latin_hypercube(nbasalary_rf_param, size=10)
+
+# set.seed(123)
+# nbasalary_rf_tune <- tune_grid(
+#                               nbasalary_rf_wf,
+#                               resamples = nbasalary_kfolds,
+#                               grid = nbasalary_rf_grid_tune,
+#                               control = ctrl_grid,
+#                               metrics = metric_set(rmse))
+# 
+# saveRDS(nbasalary_rf_tune, "/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nbasalary_rf_tune.rds")
+
+nbasalary_rf_tune <- readRDS("/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nbasalary_rf_tune.rds")
+```
+
+```{r}
+# Random Forest Top Model
+nbasalary_rf_tune %>% 
+  show_best(metric = 'rmse', n=1) %>%
+  select(mean)
+
+# RMSE on test data
+nbasalary_rf_best_tune <- nbasalary_rf_tune %>% select_best(metric = "rmse")
+nbasalary_final_rf <- finalize_model(nbasalary_rf, nbasalary_rf_best_tune)
+
+# Update our workflow
+nbasalary_rf_wf2 <- workflow() %>% 
+                        add_recipe(nbasalary_rec) %>% 
+                        add_model(nbasalary_final_rf)
+
+# Fit the model to the full training dataset
+nbasalary_rf_train_fit <- nbasalary_rf_wf2 %>% 
+  fit(data = nbasalary_train)
+
+nbasalary_rf_train_predictions <- predict(nbasalary_rf_train_fit, nbasalary_train) %>%
+  bind_cols(nbasalary_train)
+
+# train RMSE
+rf_train_rmse <- nbasalary_rf_train_predictions %>%
+  metrics(truth = logsalary, estimate = .pred) %>%
+  filter(.metric == "rmse")
+
+# Evaluate Test Sets
+rf_test_rmse <- nbasalary_rf_wf2 %>% 
+      last_fit(nbasalary_split, 
+               metrics = metric_set(yardstick::rmse)) %>% 
+      collect_metrics()
+```
+
+### XGBoost
+```{r}
+nbasalary_xgb <- boost_tree(
+                  mode = "regression",
+                  mtry = tune(),
+                  trees = tune(),
+                  min_n = tune(),
+                  tree_depth = tune(),
+                  learn_rate = tune(),
+                  loss_reduction = tune(),
+                  sample_size = tune(),
+                  stop_iter = tune()) %>%
+                  set_engine("xgboost", nthread = 7)
+
+nbasalary_xgb_param <- extract_parameter_set_dials(nbasalary_xgb) %>% 
+                    update(mtry = mtry(c(1, 64)))
+
+nbasalary_xgboost_grid <- grid_max_entropy(
+                  nbasalary_xgb_param, 
+                  size = 16)
+
+nbasalary_xgb_wf <- workflow() %>% 
+                    add_recipe(nbasalary_rec) %>% 
+                    add_model(nbasalary_xgb)
+
+# set.seed(123)
+# nbasalary_xgb_tune <- tune_grid(
+#                                 nbasalary_xgb_wf,
+#                                 resamples = nbasalary_kfolds,
+#                                 grid = nbasalary_xgboost_grid,
+#                                 control = ctrl_grid,
+#                                 metrics = metric_set(rmse)
+#                               )
+# 
+# saveRDS(nbasalary_xgb_tune, "/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nbasalary_xgb_tune.rds")
+
+nbasalary_xgb_tune <- readRDS("/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nbasalary_xgb_tune.rds")
+```
+
+```{r}
+# XGBoost Top Model
+nbasalary_xgb_tune %>% 
+  show_best(metric = "rmse", n=1) %>%
+  select(mean)
+
+### RMSE on test data
+nbasalary_xgb_best_tune <- nbasalary_xgb_tune %>% select_best(metric = "rmse")
+
+nbasalary_final_xgb <- finalize_model(nbasalary_xgb, nbasalary_xgb_best_tune)
+
+# Update our workflow
+nbasalary_xgb_wf2 <- workflow() %>% 
+                        add_recipe(nbasalary_rec) %>% 
+                        add_model(nbasalary_final_xgb)
+
+# Fit the model to the full training dataset
+nbasalary_xgb_train_fit <- nbasalary_xgb_wf2 %>% 
+  fit(data = nbasalary_train)
+
+nbasalary_xgb_train_predictions <- predict(nbasalary_xgb_train_fit, nbasalary_train) %>%
+  bind_cols(nbasalary_train)
+
+# train RMSE
+xgb_train_rmse <- nbasalary_xgb_train_predictions %>%
+  metrics(truth = logsalary, estimate = .pred) %>%
+  filter(.metric == "rmse")
+
+# Evaluate Test Sets
+xgb_test_rmse <- nbasalary_xgb_wf2 %>% 
+      last_fit(nbasalary_split, 
+               metrics = metric_set(yardstick::rmse)) %>% 
+  collect_metrics()
+```
+
+### Compare Models
+```{r}
+lm_train_rmse
+lm_test_rmse
+glmnet_train_rmse
+glmnet_test_rmse
+rf_train_rmse
+rf_test_rmse
+xgb_train_rmse
+xgb_test_rmse
+
+# Summary Table
+summarytable <- data.frame(Model = c("Base Linear Regression", "Penalized Linear Regression", "Random Forest", "XGBoost"),
+                           Train_RMSE = c(0.937, 0.937, 0.307, 0.591),
+                           Test_RMSE = c(0.944, 0.946, 0.822, 0.811))
+
+gt(summarytable) %>%
+  cols_label(
+    Model = "Model",
+    Train_RMSE = "Train RMSE",
+    Test_RMSE = "Test RMSE" ) %>%
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()) %>%
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_column_labels() 
+  ) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "lightgray"),      # Background color
+      cell_text(weight = "bold")          # Bold text
+    ),
+    locations = cells_column_labels()
+  )
+```
+
+### RF Variable Importance
+```{r}
+#| eval: false
+
+nbasalary_final_rf <- nbasalary_rf_wf2 %>% 
+      last_fit(nbasalary_split) %>%
+      extract_fit_engine()
+
+##This is needed to tell the iml package how to make predictions from ranger
+##We do this because the package is not currently constructed to understand ranger output
+pfun.rf <- function(object, newdata) predict(object, data = newdata)$predictions
+
+##Create a base iml object that is needed before generating additional plots
+predictor.rf <- Predictor$new(model = nbasalary_final_rf, 
+                                  data = juice[,-c(1, 31)], 
+                                  y = juice[,31], predict.fun = pfun.rf)
+
+imp.rf <- FeatureImp$new(predictor.rf, loss = "rmse")
+plot(imp.rf)
+
+# ALE Plot
+ale.rf <- FeatureEffect$new(predictor.rf, feature = "G", method='ale')
+ale.rf$plot()
+
+# Predicted Values
+nbasalary_rf_predictions <- nbasalary_rf_wf2 %>% 
+      last_fit(nbasalary_split) %>%
+      collect_predictions()
+```
+
+### XGB Variable Importance
+```{r}
+nbasalary_final_xgb <- nbasalary_xgb_wf2 %>%
+  last_fit(nbasalary_split) %>%
+  extract_fit_engine()
+
+juice <- juice(nbasalary_prep)
+
+pfun.xgb <- function(model, newdata){
+  newData_x <- xgb.DMatrix(data.matrix(newdata), missing = NA)
+  results <- predict(model, newData_x)
+  return(results)
+}
+
+nbasalary.predictor.xgb <- Predictor$new(model = nbasalary_final_xgb, data = juice[,-c(1, 31)], 
+                               y = juice[,31],
+                               predict.fun = pfun.xgb)
+
+# Variable Importance Plot
+# nbasalary.imp.xgb <- FeatureImp$new(nbasalary.predictor.xgb, loss = "rmse")
+# saveRDS(nbasalary.imp.xgb, "/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nbasalary.imp.xgb.rds")
+nbasalary.imp.xgb <- readRDS("/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nbasalary.imp.xgb.rds")
+plot(nbasalary.imp.xgb)
+
+var.imp <- nbasalary.imp.xgb$results %>%
+  select(feature, importance) %>%
+  head(10) %>%
+  mutate(feature = recode(feature, 
+                          "years_played" = "Years Played",
+                          "season" = "Season")) %>%
+  mutate(feature = ifelse(feature == "X2P.", "2P%", feature))
+
+# Create the horizontal bar chart
+ggplot(var.imp, aes(x = reorder(feature, importance), y = importance)) +
+  geom_bar(stat = "identity", fill = "#0073C2") +
+  labs(title = "Top 10 Most Important Variables",
+       x = "Feature",
+       y = "Importance") +
+  theme_minimal() +
+  coord_flip()
+
+# ALE Plot
+ale.xgb <- FeatureEffect$new(nbasalary.predictor.xgb, feature = "G", method='ale')
+ale.xgb$plot()
+
+ggplot(ale.xgb$results, aes(x = G, y = .value)) +
+  geom_line(color = "#0073C2", size = 1) +  # Line for ALE values
+  labs(
+    title = "Accumulated Local Effects (ALE) Plot",
+    x = "G",
+    y = "ALE of log(Salary)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme_minimal()
+```
+
+### Add predictions to nba.salary
+```{r}
+nbasalary_xgb_train_predictions <- predict(nbasalary_xgb_train_fit, nbasalary_train) %>%
+  bind_cols(nbasalary_train)
+
+# Train Predictions on dataset
+nba.salary_train_pred <- full_join(nba.salary, nbasalary_xgb_train_predictions)  %>%
+      dplyr::rename(Predicted_LogSalary = .pred)
+
+# Test Predicted Values
+nbasalary_xgb_predictions <- nbasalary_xgb_wf2 %>% 
+      last_fit(nbasalary_split) %>%
+      collect_predictions()
+
+# Test Predictions on dataset
+nba.salary_test_pred <- nba.salary %>%
+  dplyr::mutate(Row = row_number()) %>% # Add a row identifier
+  dplyr::left_join(
+    nbasalary_xgb_predictions %>%
+      dplyr::select(.pred, .row) %>%
+      dplyr::rename(Row = .row, Predicted_LogSalary = .pred), 
+    by = "Row" 
+  ) %>%
+  dplyr::select(-Row)
+
+# Final combined dataset with predicted values
+nba.salary_full_log_pred <- nba.salary_test_pred %>%
+  mutate(Predicted_LogSalary = coalesce(Predicted_LogSalary, nba.salary_train_pred$Predicted_LogSalary))
+
+nba.salary_fullpred <- nba.salary_full_log_pred %>%
+  mutate(Predicted_Salary = exp(Predicted_LogSalary))
+
+# write.csv(nba.salary_fullpred, "/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nba.salary_fullpred.csv", row.names = FALSE)
+
+nba.salary_fullpred <- read.csv("/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/nba.salary_fullpred.csv")
+nba.salary_fullpred$Predicted_Salary <- round(nba.salary_fullpred$Predicted_Salary)
+
+nba.salary_fullpred <- nba.salary_fullpred %>%
+  mutate(Difference = Salary - Predicted_Salary) 
+```
+
+# New predictions test
+```{r}
+template <- read.csv("/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/Template.csv")
+
+# need fit_workflow
+fit_workflow <- fit(nbasalary_xgb_wf2, nbasalary_train)
+fit_workflow <- readRDS("/Users/summeryang/Downloads/SMU/MDSAS/Sports Analytics/Project/fit_workflow.rds")
+
+predictions <- predict(fit_workflow, template)
+    
+# Exponentiate the predicted log salaries to get the predicted salaries
+predictions <- exp(predictions$.pred)
+
+predicted_data <- cbind(template, Predicted_Salary = predictions)
+
+predictions_table <- predicted_data %>%
+      select(Player, Predicted_Salary)
+```
+
+# Case study: Ben Simmons
+```{r}
+# Filter the data for Ben Simmons
+ben_simmons_data <- nba.salary_fullpred %>%
+  filter(Player == "Ben Simmons")
+
+# Create the plot
+ggplot(ben_simmons_data, aes(x = season)) +
+  geom_point(aes(y = Salary, color = "Actual Salary"), size = 1.6) +
+  geom_point(aes(y = Predicted_Salary, color = "Predicted Salary"), size = 1.6) +
+  geom_line(aes(y = Predicted_Salary, color = "Predicted Salary"), size = 1) +
+  labs(
+    title = "Ben Simmons: Predicted vs Actual Salary",
+    x = "Season",
+    y = "Salary",
+    color = "Legend"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("Actual Salary" = "#3498db", "Predicted Salary" = "#e74c3c")) +
+  scale_y_continuous(labels = dollar_format())
+```
+
+# Exploration
+```{r}
+library(patchwork)
+
+data2023 <- nba.salary_fullpred %>%
+  filter(Season =="2023-2024")
+
+data2014 <- nba.salary_fullpred %>%
+  filter(Season =="2014-2015")
+
+plot23 <- ggplot(data2023, aes(x = Predicted_Salary, y = Salary)) +
+      geom_point(color = "#3498db", size = 2) +
+      geom_abline(slope = 1, intercept = 0,color = "#e74c3c") + 
+    labs(
+      title = "2023-2024 Season: Actual vs. Predicted",
+        x = "Predicted Salary",
+        y = "Actual Salary"
+      ) +
+      theme_minimal() +
+      scale_x_continuous(labels = dollar_format()) +
+      scale_y_continuous(labels = dollar_format())
+
+plot14 <- ggplot(data2014, aes(x = Predicted_Salary, y = Salary)) +
+      geom_point(color = "#3498db", size = 2) +
+      geom_abline(slope = 1, intercept = 0,color = "#e74c3c") + 
+    labs(
+      title = "2014-2015 Season: Actual vs. Predicted",
+        x = "Predicted Salary",
+        y = "Actual Salary"
+      ) +
+      theme_minimal() +
+      scale_x_continuous(labels = dollar_format()) +
+      scale_y_continuous(labels = dollar_format())
+
+plot14 | plot23
+
+ggplot(nba.salary_fullpred, aes(x = Predicted_Salary, y = Salary)) +
+      geom_point(color = "#3498db", size = 2) +
+      geom_abline(slope = 1, intercept = 0,color = "#e74c3c") + 
+    labs(
+      title = "Actual vs. Predicted Salary",
+        x = "Predicted Salary",
+        y = "Actual Salary"
+      ) +
+      theme_minimal() +
+      scale_x_continuous(labels = dollar_format()) +
+      scale_y_continuous(labels = dollar_format())
+
+# Top 10 underpaid players
+underpaid10 <- nba.salary_fullpred %>%
+  filter(Season == "2023-2024") %>%
+  group_by(Team) %>%
+  slice_max(order_by = desc(Difference), n = 1) %>%
+  ungroup() %>%
+  select(Team, Player, Salary, Predicted_Salary, Difference)
+
+underpaid10 %>%
+  gt() %>%
+  fmt_currency(columns = c(Salary, Predicted_Salary, Difference), 
+               currency = "USD",
+               decimals = 0) %>%
+  cols_label(
+    Team = "Team",
+    Player = "Player",
+    Salary = "Actual Salary",
+    Predicted_Salary = "Predicted Salary",
+    Difference = "Difference"
+  ) %>%
+  tab_options(
+    table.font.size = px(14),
+    heading.title.font.size = px(20),
+    data_row.padding = px(4) # Reduce row padding for compression
+  ) %>%
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_body()
+  ) %>%
+  tab_style(
+    style = cell_text(align = "center"),
+    locations = cells_column_labels()
+  ) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "lightgray"),     
+      cell_text(weight = "bold")       
+    ),
+    locations = cells_column_labels()
+  ) %>%
+  tab_style(
+    style = cell_fill(color = "#F9F9F9"),
+    locations = cells_body(rows = seq(1, nrow(underpaid10), 2)) # Odd rows
+  ) %>%
+  tab_style(
+    style = cell_fill(color = "#E9ECEF"),
+    locations = cells_body(rows = seq(2, nrow(underpaid10), 2)) # Even rows
+  )
+
+
+```
+
